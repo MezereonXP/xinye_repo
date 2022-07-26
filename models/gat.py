@@ -41,14 +41,14 @@ class GAT(torch.nn.Module):
             for bn in self.bns:
                 bn.reset_parameters()
 
-    def forward(self, x, edge_index: Union[Tensor, SparseTensor]):
+    def forward(self, x, edge_index: Union[Tensor, SparseTensor], edge_attr):
         for i, conv in enumerate(self.convs[:-1]):
-            x = conv(x, edge_index)
+            x = conv(x, edge_index, edge_attr)
             if self.batchnorm: 
                 x = self.bns[i](x)
             x = F.relu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.convs[-1](x, edge_index)
+        x = self.convs[-1](x, edge_index, edge_attr)
         return x.log_softmax(dim=-1)
     
     

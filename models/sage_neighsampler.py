@@ -40,7 +40,7 @@ class SAGE_NeighSampler(torch.nn.Module):
                 bn.reset_parameters()        
         
         
-    def forward(self, x, adjs):
+    def forward(self, x, adjs, data=None):
         for i, (edge_index, _, size) in enumerate(adjs):
             x_target = x[:size[1]]
             x = self.convs[i]((x, x_target), edge_index)
@@ -73,7 +73,7 @@ class SAGE_NeighSampler(torch.nn.Module):
         x = self.convs[-1](x, adj_t)
         return x.log_softmax(dim=-1)
     
-    def inference(self, x_all, layer_loader, device):
+    def inference(self, x_all, layer_loader, device, data=None):
         pbar = tqdm(total=x_all.size(0) * self.num_layers, ncols=80)
         pbar.set_description('Evaluating')
 
@@ -100,3 +100,40 @@ class SAGE_NeighSampler(torch.nn.Module):
         pbar.close()
 
         return x_all.log_softmax(dim=-1)
+
+
+
+class SAGE_NeighSamplerEnsemble(torch.nn.Module):
+    def __init__(self
+                 , in_channels
+                 , hidden_channels
+                 , out_channels
+                 , num_layers
+                 , dropout
+                 , batchnorm=True):
+        super(SAGE_NeighSamplerEnsemble, self).__init__()
+        n = 4
+        self.n = n
+        self.nets = torch.nn.ModuleList()
+        for i in range(n):
+            self.nets.append(SAGE_NeighSampler(in_channels, hidden_channels, out_channels, num_layers, dropout, batchnorm))
+    
+    def reset_parameters(self):
+        for net in self.nets:
+            net.reset_parameters()
+
+
+    def forward(self, x, adjs):
+        res = self.nets[0](x, adjs)
+        for i in range(1, self.n):
+            res = res + self.nets[i](x, adjs)
+        res = res / self.n
+        return res
+    
+    
+    def inference(self, x_all, layer_loader, device):
+        res = self.nets[0].inference(x_all, layer_loader, device)
+        for i in range(1, self.n):
+            res = res + self.nets[i].inference(x_all, layer_loader, device)
+        res = res / self.n
+        return res

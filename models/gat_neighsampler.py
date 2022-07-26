@@ -185,7 +185,7 @@ class GATv2_NeighSampler(torch.nn.Module):
         x = self.convs[-1](x, adj_t)
         return x.log_softmax(dim=-1)
     
-    def inference(self, x_all, layer_loader, device):
+    def inference(self, x_all, layer_loader, device, data=None):
         pbar = tqdm(total=x_all.size(0) * self.num_layers, ncols=80)
         pbar.set_description('Evaluating')
 

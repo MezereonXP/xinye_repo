@@ -6,6 +6,11 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.nn import SAGEConv
 
+
+
+        
+    
+
 class SAGE(torch.nn.Module):
     def __init__(self
                  , in_channels
@@ -47,3 +52,31 @@ class SAGE(torch.nn.Module):
         x = self.convs[-1](x, edge_index)
         return x.log_softmax(dim=-1)
     
+class SageEnsemble(torch.nn.Module):
+    def __init__(self
+                 , in_channels
+                 , hidden_channels
+                 , out_channels
+                 , num_layers
+                 , dropout
+                 , batchnorm=True):
+        super(SageEnsemble, self).__init__()
+        n = 3
+        self.nets = torch.nn.ModuleList()
+        for i in range(n):
+            self.nets.append(SAGE(in_channels, hidden_channels, out_channels, num_layers, dropout, batchnorm))
+    
+    def reset_parameters(self):
+        for net in self.nets:
+            net.reset_parameters()
+
+
+    def forward(self, x, edge_index: Union[Tensor, SparseTensor]):
+        res = []
+        for net in self.nets:
+            res.append(net(x, edge_index))
+        tmp = res[0]
+        for r in res[1:]:
+            tmp += r
+        return tmp/len(self.nets)
+        

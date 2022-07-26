@@ -3,7 +3,7 @@
 from utils import XYGraphP1
 from utils.utils import prepare_folder
 from utils.evaluator import Evaluator
-from models import MLP, MLPLinear, GCN, SAGE, GAT, GATv2
+from models import MLP, MLPLinear, GCN, SAGE, GAT, GATv2, APPNPNet
 
 import argparse
 
@@ -16,6 +16,7 @@ from torch_sparse import SparseTensor
 from torch_geometric.utils import to_undirected
 import numpy as np
 import pandas as pd
+from sklearn.metrics import confusion_matrix
 
 
 mlp_parameters = {'lr':0.01
@@ -34,7 +35,15 @@ gcn_parameters = {'lr':0.01
               , 'l2':5e-7
              }
 
-sage_parameters = {'lr':0.01
+sage_parameters = {'lr':0.001
+              , 'num_layers':2
+              , 'hidden_channels':64
+              , 'dropout':0.1
+              , 'batchnorm': False
+              , 'l2':5e-7
+             }
+
+appnp_parameters = {'lr':1e-3
               , 'num_layers':2
               , 'hidden_channels':128
               , 'dropout':0
@@ -81,7 +90,10 @@ def main():
     if args.dataset in ['XYGraphP1']: nlabels = 2
         
     data = dataset[0]
+    # data=T.AddSelfLoops()(data)
     data.adj_t = data.adj_t.to_symmetric()
+    data.x = torch.cat([torch.tensor(np.load('./fixed_features.npy')), data.x[:, -1].unsqueeze(1)], dim=-1)
+    
         
     if args.dataset in ['XYGraphP1']:
         x = data.x
@@ -110,6 +122,13 @@ def main():
         model_para.pop('lr')
         model_para.pop('l2')        
         model = SAGE(in_channels = data.x.size(-1), out_channels = nlabels, **model_para).to(device)
+    if args.model == 'appnp':
+        para_dict = appnp_parameters
+        model_para = appnp_parameters.copy()
+        model_para.pop('lr')
+        model_para.pop('l2')        
+        model = APPNPNet(in_channels = data.x.size(-1), out_channels = nlabels, **model_para).to(device)
+    
 
     print(f'Model {args.model} initialized')
 
@@ -124,12 +143,15 @@ def main():
     evaluator = Evaluator('auc')
     preds_train, preds_valid = out[data.train_mask], out[data.valid_mask]
     y_train, y_valid = data.y[data.train_mask], data.y[data.valid_mask]
+
+    print(confusion_matrix(y_valid.cpu().numpy(), preds_valid.argmax(1).cpu().numpy()))
     train_auc = evaluator.eval(y_train, preds_train)['auc']
     valid_auc = evaluator.eval(y_valid, preds_valid)['auc']
     print('train_auc:',train_auc)
     print('valid_auc:',valid_auc)
     
     preds = out[data.test_mask].cpu().numpy()
+    print("One Count for preds: {}".format(sum(preds.argmax(1))))
     np.save('./submit/preds.npy', preds)
 
 
